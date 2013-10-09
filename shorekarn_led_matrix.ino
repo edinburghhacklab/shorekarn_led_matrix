@@ -39,7 +39,9 @@ unsigned int nextRow = 0;
 unsigned int nextCol = 0;
 unsigned long lastColChange = 0;
 
-uint8_t framebuffer[60];
+const int displayWidth = 60;
+int scrollLen = 60;
+uint8_t framebuffer[500];
 long frame_timer;
 
 const int fontWidth = 5;
@@ -170,6 +172,10 @@ void loop() {
   }
   
   if (packet_received) {
+    for (int i=0; i < sizeof(framebuffer); i++) {
+      framebuffer[i] = 0;
+    }
+    scrollLen = strlen(packet.text) * 6;
     putString(packet.text, 0);
     packet_received = 0; 
   }
@@ -183,15 +189,15 @@ void loop() {
 
 void scrollLeft() {
   uint8_t temp = framebuffer[0];
-  for (int i = 0; i < sizeof(framebuffer) - 1; i++) {
+  for (int i = 0; i < scrollLen - 1; i++) {
     framebuffer[i] = framebuffer[i + 1];
   }
-  framebuffer[sizeof(framebuffer) - 1] = temp;
+  framebuffer[scrollLen - 1] = temp;
 }
 
 void scrollRight() {
-  uint8_t temp = framebuffer[59];
-  for (int i = sizeof(framebuffer) - 1; i > 0; i--) {
+  uint8_t temp = framebuffer[scrollLen - 1];
+  for (int i = scrollLen - 1; i > 0; i--) {
     framebuffer[i] = framebuffer[i - 1];
   }
   framebuffer[0] = temp;
@@ -226,10 +232,10 @@ void drawFrame() {
   for (int row=0; row<8; row++) {
     digitalWrite(outputDisable, HIGH);
     selectRow(row);
-    for (int col = 0; col < sizeof(framebuffer); col++) {
+    for (int col = 0; col < displayWidth; col++) {
       digitalWrite(shiftClockPin, HIGH);
       // Access framebuffer in reverse since we're shifting in from the left
-      digitalWrite(shiftDataPin, (framebuffer[sizeof(framebuffer) - 1 - col] >> row) & 1);
+      digitalWrite(shiftDataPin, (framebuffer[displayWidth - 1 - col] >> row) & 1);
       digitalWrite(shiftClockPin, LOW);
     }
     digitalWrite(outputDisable, LOW);
