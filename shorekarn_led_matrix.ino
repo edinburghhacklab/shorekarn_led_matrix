@@ -1,9 +1,38 @@
-const int rowPin0 = 4;
-const int rowPin1 = 5;
-const int rowPin2 = 2;
-const int outputDisable = 3;
-const int shiftDataPin = 7;
-const int shiftClockPin = 6;
+
+#include <JeeLib.h>
+
+#define FREQ RF12_868MHZ
+#define GROUP 38
+#define NODE 13
+#define ID_BYTE 78
+
+/*
+// Pins for Jeenode Micro
+const int rowPin0 = 10; // DIO
+const int rowPin1 = 7; // TX
+const int rowPin2 = 8; // RX
+const int outputDisable = 0; // Pad
+const int shiftDataPin = 9; // AIO
+const int shiftClockPin = 3; // IRQ
+*/
+
+// Pins for Jeenode Bridge Board
+const int rowPin0 = 5;
+const int rowPin1 = 4;
+const int rowPin2 = 7;
+const int outputDisable = 6;
+const int shiftDataPin = A2;
+const int shiftClockPin = A3;
+
+typedef struct {
+  byte id;
+  byte command;
+  char text[62];
+  byte zero;
+} Packet;
+
+Packet packet;
+boolean packet_received = 0;
 
 unsigned int maxRow = 6;
 unsigned int nextRow = 0;
@@ -120,12 +149,31 @@ void setup() {
   pinMode(shiftDataPin, OUTPUT);
   pinMode(shiftClockPin, OUTPUT);
 
+  rf12_initialize(NODE, FREQ, GROUP);
+
   putString("Hacklab", 0);
   
   frame_timer = millis();
 }
 
 void loop() {
+  
+  // Check for incoming data
+  if (rf12_recvDone()) {
+    if (rf12_crc == 0 && (rf12_hdr & RF12_HDR_CTL) == 0) {
+      if (rf12_data[0] == ID_BYTE && rf12_len > 2) {
+        packet = *(Packet*) rf12_data;
+        packet.zero = 0;
+        packet_received = 1;
+      }
+    }
+  }
+  
+  if (packet_received) {
+    putString(packet.text, 0);
+    packet_received = 0; 
+  }
+
   drawFrame();
   if (millis() - frame_timer > 50) {
     scrollLeft();
@@ -188,3 +236,4 @@ void drawFrame() {
     delayMicroseconds(1000);
   }
 }
+
