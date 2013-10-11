@@ -1,21 +1,23 @@
 
 #include <JeeLib.h>
+#include <avr/pgmspace.h>
 
 #define FREQ RF12_868MHZ
 #define GROUP 38
 #define NODE 13
-#define ID_BYTE 78
+#define ID_BYTE_1 12
+#define ID_BYTE_2 84
+#define MAX_TEXT_LENGTH 31
+
+// Pins for Jeenode Micro
+const int outputDisable = 10; // DIO
+const int rowPin0 = 9; // AIO
+const int rowPin1 = 7; // TX
+const int rowPin2 = 3; // IRQ
+const int shiftClockPin = 0; // Pad
+const int shiftDataPin = 8; // RX
 
 /*
-// Pins for Jeenode Micro
-const int rowPin0 = 10; // DIO
-const int rowPin1 = 7; // TX
-const int rowPin2 = 8; // RX
-const int outputDisable = 0; // Pad
-const int shiftDataPin = 9; // AIO
-const int shiftClockPin = 3; // IRQ
-*/
-
 // Pins for Jeenode Bridge Board
 const int rowPin0 = 5;
 const int rowPin1 = 4;
@@ -23,12 +25,13 @@ const int rowPin2 = 7;
 const int outputDisable = 6;
 const int shiftDataPin = A2;
 const int shiftClockPin = A3;
+*/
 
 typedef struct {
-  byte id;
+  byte id1;
+  byte id2;
   byte command;
-  char text[62];
-  byte zero;
+  char text[MAX_TEXT_LENGTH];
 } Packet;
 
 Packet packet;
@@ -41,11 +44,11 @@ unsigned long lastColChange = 0;
 
 const int displayWidth = 60;
 int scrollLen = 60;
-uint8_t framebuffer[500];
+uint8_t framebuffer[180];
 long frame_timer;
 
 const int fontWidth = 5;
-const int font[][fontWidth] = {
+PROGMEM prog_uchar font[][fontWidth] = {
 {0x00,0x00,0x00,0x00,0x00}, // 0x20 32
 {0x00,0x00,0x6f,0x00,0x00}, // ! 0x21 33
 {0x00,0x07,0x00,0x07,0x00}, // " 0x22 34
@@ -153,6 +156,16 @@ void setup() {
 
   rf12_initialize(NODE, FREQ, GROUP);
 
+  /*
+  framebuffer[0] = 0b0001000;
+  framebuffer[1] = 0b0010100;
+  framebuffer[2] = 0b0100010;
+  framebuffer[3] = 0b1000001;
+  framebuffer[4] = 0b0100010;
+  framebuffer[5] = 0b0010100;
+  framebuffer[6] = 0b0001000;
+  */
+
   putString("Hacklab", 0);
   
   frame_timer = millis();
@@ -163,20 +176,24 @@ void loop() {
   // Check for incoming data
   if (rf12_recvDone()) {
     if (rf12_crc == 0 && (rf12_hdr & RF12_HDR_CTL) == 0) {
-      if (rf12_data[0] == ID_BYTE && rf12_len > 2) {
+      if (rf12_data[0] == ID_BYTE_1 && rf12_data[1] == ID_BYTE_2 &&
+          rf12_len > 3 && rf12_len <= sizeof(packet)) {
         packet = *(Packet*) rf12_data;
-        packet.zero = 0;
+        packet.text[MAX_TEXT_LENGTH-1] = 0;
         packet_received = 1;
       }
     }
   }
   
   if (packet_received) {
+    // clear framebuffer
     for (int i=0; i < sizeof(framebuffer); i++) {
       framebuffer[i] = 0;
     }
-    scrollLen = strlen(packet.text) * 6;
+    
+    scrollLen = max(strlen(packet.text) * 6, 60);
     putString(packet.text, 0);
+    
     packet_received = 0; 
   }
 
@@ -205,7 +222,7 @@ void scrollRight() {
 
 void putChar(char character, int pos) {
   for (int i = 0; i < 5; i++) {
-    framebuffer[pos + i] = font[character - 32][i]; 
+    framebuffer[pos + i] = pgm_read_byte(&(font[character - 32][i])); 
   }
 }
 
@@ -236,7 +253,9 @@ void drawFrame() {
       digitalWrite(shiftClockPin, HIGH);
       // Access framebuffer in reverse since we're shifting in from the left
       digitalWrite(shiftDataPin, (framebuffer[displayWidth - 1 - col] >> row) & 1);
+      //delayMicroseconds(1);
       digitalWrite(shiftClockPin, LOW);
+      //delayMicroseconds(1);
     }
     digitalWrite(outputDisable, LOW);
     delayMicroseconds(1000);
