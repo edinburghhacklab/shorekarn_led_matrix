@@ -1,20 +1,54 @@
-const int rowPin0 = 4;
-const int rowPin1 = 5;
-const int rowPin2 = 2;
-const int outputDisable = 3;
-const int shiftDataPin = 7;
-const int shiftClockPin = 6;
+
+#include <JeeLib.h>
+#include <avr/pgmspace.h>
+
+#define FREQ RF12_868MHZ
+#define GROUP 38
+#define NODE 13
+#define ID_BYTE_1 12
+#define ID_BYTE_2 84
+#define MAX_TEXT_LENGTH 31
+
+// Pins for Jeenode Micro
+const int outputDisable = 10; // DIO
+const int rowPin0 = 9; // AIO
+const int rowPin1 = 7; // TX
+const int rowPin2 = 3; // IRQ
+const int shiftClockPin = 0; // Pad
+const int shiftDataPin = 8; // RX
+
+/*
+// Pins for Jeenode Bridge Board
+const int rowPin0 = 5;
+const int rowPin1 = 4;
+const int rowPin2 = 7;
+const int outputDisable = 6;
+const int shiftDataPin = A2;
+const int shiftClockPin = A3;
+*/
+
+typedef struct {
+  byte id1;
+  byte id2;
+  byte command;
+  char text[MAX_TEXT_LENGTH];
+} Packet;
+
+Packet packet;
+boolean packet_received = 0;
 
 unsigned int maxRow = 6;
 unsigned int nextRow = 0;
 unsigned int nextCol = 0;
 unsigned long lastColChange = 0;
 
-uint8_t framebuffer[60];
+const int displayWidth = 60;
+int scrollLen = 60;
+uint8_t framebuffer[180];
 long frame_timer;
 
 const int fontWidth = 5;
-const int font[][fontWidth] = {
+PROGMEM prog_uchar font[][fontWidth] = {
 {0x00,0x00,0x00,0x00,0x00}, // 0x20 32
 {0x00,0x00,0x6f,0x00,0x00}, // ! 0x21 33
 {0x00,0x07,0x00,0x07,0x00}, // " 0x22 34
@@ -120,12 +154,49 @@ void setup() {
   pinMode(shiftDataPin, OUTPUT);
   pinMode(shiftClockPin, OUTPUT);
 
+  rf12_initialize(NODE, FREQ, GROUP);
+
+  /*
+  framebuffer[0] = 0b0001000;
+  framebuffer[1] = 0b0010100;
+  framebuffer[2] = 0b0100010;
+  framebuffer[3] = 0b1000001;
+  framebuffer[4] = 0b0100010;
+  framebuffer[5] = 0b0010100;
+  framebuffer[6] = 0b0001000;
+  */
+
   putString("Hacklab", 0);
   
   frame_timer = millis();
 }
 
 void loop() {
+  
+  // Check for incoming data
+  if (rf12_recvDone()) {
+    if (rf12_crc == 0 && (rf12_hdr & RF12_HDR_CTL) == 0) {
+      if (rf12_data[0] == ID_BYTE_1 && rf12_data[1] == ID_BYTE_2 &&
+          rf12_len > 3 && rf12_len <= sizeof(packet)) {
+        packet = *(Packet*) rf12_data;
+        packet.text[MAX_TEXT_LENGTH-1] = 0;
+        packet_received = 1;
+      }
+    }
+  }
+  
+  if (packet_received) {
+    // clear framebuffer
+    for (int i=0; i < sizeof(framebuffer); i++) {
+      framebuffer[i] = 0;
+    }
+    
+    scrollLen = max(strlen(packet.text) * 6, 60);
+    putString(packet.text, 0);
+    
+    packet_received = 0; 
+  }
+
   drawFrame();
   if (millis() - frame_timer > 50) {
     scrollLeft();
@@ -135,15 +206,15 @@ void loop() {
 
 void scrollLeft() {
   uint8_t temp = framebuffer[0];
-  for (int i = 0; i < sizeof(framebuffer) - 1; i++) {
+  for (int i = 0; i < scrollLen - 1; i++) {
     framebuffer[i] = framebuffer[i + 1];
   }
-  framebuffer[sizeof(framebuffer) - 1] = temp;
+  framebuffer[scrollLen - 1] = temp;
 }
 
 void scrollRight() {
-  uint8_t temp = framebuffer[59];
-  for (int i = sizeof(framebuffer) - 1; i > 0; i--) {
+  uint8_t temp = framebuffer[scrollLen - 1];
+  for (int i = scrollLen - 1; i > 0; i--) {
     framebuffer[i] = framebuffer[i - 1];
   }
   framebuffer[0] = temp;
@@ -151,7 +222,7 @@ void scrollRight() {
 
 void putChar(char character, int pos) {
   for (int i = 0; i < 5; i++) {
-    framebuffer[pos + i] = font[character - 32][i]; 
+    framebuffer[pos + i] = pgm_read_byte(&(font[character - 32][i])); 
   }
 }
 
@@ -178,13 +249,16 @@ void drawFrame() {
   for (int row=0; row<8; row++) {
     digitalWrite(outputDisable, HIGH);
     selectRow(row);
-    for (int col = 0; col < sizeof(framebuffer); col++) {
+    for (int col = 0; col < displayWidth; col++) {
       digitalWrite(shiftClockPin, HIGH);
       // Access framebuffer in reverse since we're shifting in from the left
-      digitalWrite(shiftDataPin, (framebuffer[sizeof(framebuffer) - 1 - col] >> row) & 1);
+      digitalWrite(shiftDataPin, (framebuffer[displayWidth - 1 - col] >> row) & 1);
+      //delayMicroseconds(1);
       digitalWrite(shiftClockPin, LOW);
+      //delayMicroseconds(1);
     }
     digitalWrite(outputDisable, LOW);
     delayMicroseconds(1000);
   }
 }
+
