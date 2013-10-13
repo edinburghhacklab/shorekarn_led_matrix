@@ -11,11 +11,28 @@
 
 // Pins for Jeenode Micro
 const int outputDisable = 10; // DIO
+#define OUTPUT_DISABLE_PORT PORTA
+#define OUTPUT_DISABLE_PIN 0
+
 const int rowPin0 = 9; // AIO
+#define ROW_PIN_0_PORT PORTA
+#define ROW_PIN_0_PIN 1
+
 const int rowPin1 = 7; // TX
+#define ROW_PIN_1_PORT PORTA
+#define ROW_PIN_1_PIN 3
+
 const int rowPin2 = 3; // IRQ
+#define ROW_PIN_2_PORT PORTA
+#define ROW_PIN_2_PIN 7
+
 const int shiftClockPin = 0; // Pad
+#define SHIFT_CLOCK_PORT PORTB
+#define SHIFT_CLOCK_PIN 0
+
 const int shiftDataPin = 8; // RX
+#define SHIFT_DATA_PORT PORTA
+#define SHIFT_DATA_PIN 2
 
 /*
 // Pins for Jeenode Bridge Board
@@ -233,10 +250,10 @@ void putString(char str[], int pos) {
   } 
 } 
 
-void selectRow(int row) {
-  digitalWrite(rowPin0, row&1);
-  digitalWrite(rowPin1, row&2);
-  digitalWrite(rowPin2, row&4);
+inline void selectRow(int row) {
+  bitWrite(ROW_PIN_0_PORT, ROW_PIN_0_PIN, row&1);
+  bitWrite(ROW_PIN_1_PORT, ROW_PIN_1_PIN, row&2);
+  bitWrite(ROW_PIN_2_PORT, ROW_PIN_2_PIN, row&4);
 }
 
 /* Draw a frame
@@ -247,17 +264,17 @@ void selectRow(int row) {
 */
 void drawFrame() {
   for (int row=0; row<8; row++) {
-    digitalWrite(outputDisable, HIGH);
+    bitSet(OUTPUT_DISABLE_PORT, OUTPUT_DISABLE_PIN);
     selectRow(row);
     for (int col = 0; col < displayWidth; col++) {
-      digitalWrite(shiftClockPin, HIGH);
+      bitSet(SHIFT_CLOCK_PORT, SHIFT_CLOCK_PIN);
       // Access framebuffer in reverse since we're shifting in from the left
-      digitalWrite(shiftDataPin, (framebuffer[displayWidth - 1 - col] >> row) & 1);
+      bitWrite(SHIFT_DATA_PORT, SHIFT_DATA_PIN, (framebuffer[displayWidth - 1 - col] >> row) & 1);
       //delayMicroseconds(1);
-      digitalWrite(shiftClockPin, LOW);
+      bitClear(SHIFT_CLOCK_PORT, SHIFT_CLOCK_PIN);
       //delayMicroseconds(1);
     }
-    digitalWrite(outputDisable, LOW);
+    bitClear(OUTPUT_DISABLE_PORT, OUTPUT_DISABLE_PIN);
     delayMicroseconds(1000);
   }
 }
