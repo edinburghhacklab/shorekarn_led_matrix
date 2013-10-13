@@ -198,7 +198,7 @@ void loop() {
   }
 
   drawFrame();
-  if (millis() - frame_timer > 50) {
+  if (millis() - frame_timer > 30) {
     scrollLeft();
     frame_timer = millis();
   }
